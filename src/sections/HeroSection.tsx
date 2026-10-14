@@ -259,9 +259,9 @@ export default function HeroSection({ onNavigate }: HeroSectionProps = {}) {
           className="hero-cta-group"
           style={{
             display: 'flex',
-            gap: '20px',
+            gap: '18px',
             justifyContent: 'center',
-            marginTop: '48px',
+            marginTop: '44px',
             flexWrap: 'wrap',
           }}
         >
@@ -277,12 +277,39 @@ export default function HeroSection({ onNavigate }: HeroSectionProps = {}) {
             }}
             className="btn-primary"
             style={{
-              padding: '16px 42px',
+              padding: '16px 38px',
               cursor: 'pointer',
               fontSize: '13px',
             }}
           >
             EXPLORE COURSES
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.querySelector('#gallery')
+              if (el) {
+                const navbarHeight = 88
+                const elementPosition = el.getBoundingClientRect().top + window.pageYOffset
+                window.scrollTo({
+                  top: Math.max(0, elementPosition - navbarHeight),
+                  behavior: 'smooth',
+                })
+              } else if (onNavigate) {
+                onNavigate('/gallery')
+              } else {
+                window.history.pushState({}, '', '/gallery')
+                window.dispatchEvent(new PopStateEvent('popstate'))
+              }
+            }}
+            className="btn-gallery"
+            style={{
+              padding: '16px 38px',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            VIEW GALLERY
           </button>
           <button
             type="button"
@@ -296,7 +323,7 @@ export default function HeroSection({ onNavigate }: HeroSectionProps = {}) {
             }}
             className="btn-secondary"
             style={{
-              padding: '16px 42px',
+              padding: '16px 38px',
               cursor: 'pointer',
               fontSize: '13px',
             }}
