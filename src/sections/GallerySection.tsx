@@ -71,18 +71,22 @@ export default function GallerySection() {
   const loadGalleryItems = useCallback(async () => {
     try {
       const dbItems: MediaItem[] = await fetchActiveMedia('image')
-      const mapped: GalleryDisplayItem[] = dbItems.map(item => ({
-        id: item.id,
-        category: item.category || 'PERFORMANCES',
-        title: item.title,
-        description: item.description || '',
-        imageUrl: item.media_url,
-        createdAt: new Date(item.created_at).getTime(),
-      }))
-      // DB items first, then static images
-      setItems([...mapped, ...staticPerformances])
+      if (dbItems && dbItems.length > 0) {
+        const mapped: GalleryDisplayItem[] = dbItems.map(item => ({
+          id: item.id,
+          category: item.category || 'PERFORMANCES',
+          title: item.title,
+          description: item.description || '',
+          imageUrl: item.media_url,
+          createdAt: new Date(item.created_at).getTime(),
+        }))
+        setItems(mapped)
+      } else {
+        // Fallback to static gallery when DB has no images yet
+        setItems(staticPerformances)
+      }
     } catch (err) {
-      console.error('Failed to load gallery items from Supabase:', err)
+      console.warn('Failed to load gallery items from Supabase:', err)
       setItems(staticPerformances)
     } finally {
       setDbLoaded(true)

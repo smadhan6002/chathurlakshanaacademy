@@ -25,6 +25,8 @@ import ContactSection from './sections/ContactSection'
 // Admin Portal
 import AdminLogin from './admin/AdminLogin'
 import AdminDashboard from './admin/AdminDashboard'
+import { getCurrentAdmin, signOutAdmin, verifyUserIsAdmin } from './lib/auth'
+import { supabase } from './lib/supabase'
 
 // Shared UI Components
 import LoadingScreen from './components/LoadingScreen'
@@ -35,6 +37,7 @@ import type { EnquiryType } from './components/EnquiryModal'
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname || '/')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   
   // Unified Enquiry Modal state
@@ -64,9 +67,39 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // Check admin session storage on mount
-    const auth = sessionStorage.getItem('admin_auth') === 'true'
-    setIsAuthenticated(auth)
+    let isMounted = true
+
+    // Check initial Supabase admin session on mount
+    getCurrentAdmin()
+      .then((adminUser) => {
+        if (isMounted) {
+          setIsAuthenticated(Boolean(adminUser))
+          setIsAuthChecking(false)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsAuthenticated(false)
+          setIsAuthChecking(false)
+        }
+      })
+
+    // Listen to Supabase auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return
+      if (session?.user) {
+        const isAdmin = await verifyUserIsAdmin(session.user)
+        if (isMounted) {
+          setIsAuthenticated(isAdmin)
+          setIsAuthChecking(false)
+        }
+      } else {
+        if (isMounted) {
+          setIsAuthenticated(false)
+          setIsAuthChecking(false)
+        }
+      }
+    })
 
     // Handle browser back and forward buttons
     const handlePopState = () => {
@@ -74,7 +107,11 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
     window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    return () => {
+      isMounted = false
+      window.removeEventListener('popstate', handlePopState)
+      subscription?.unsubscribe()
+    }
   }, [])
 
   const navigate = (path: string) => {
@@ -84,19 +121,49 @@ export default function App() {
   }
 
   const handleLogin = () => {
-    sessionStorage.setItem('admin_auth', 'true')
     setIsAuthenticated(true)
+    setIsAuthChecking(false)
     navigate('/admin/dashboard')
   }
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('admin_auth')
+  const handleLogout = async () => {
+    await signOutAdmin()
     setIsAuthenticated(false)
+    setIsAuthChecking(false)
     navigate('/admin')
   }
 
-  // Admin routes — no loading screen needed
+  // Admin routes — show a clean loading indicator while verifying admin session on page refresh
   if (currentPath === '/admin/dashboard') {
+    if (isAuthChecking) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: 'var(--color-bg-alternate)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+          color: 'var(--color-accent)',
+          fontFamily: 'var(--font-body)',
+          fontSize: '13px',
+          letterSpacing: '0.18em',
+        }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            border: '2px solid rgba(184, 138, 50, 0.25)',
+            borderTopColor: 'var(--color-accent)',
+            borderRadius: '50%',
+            animation: 'adminSpin 0.8s linear infinite',
+          }} />
+          <span>VERIFYING ADMINISTRATOR ACCESS...</span>
+          <style>{`@keyframes adminSpin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )
+    }
+
     if (!isAuthenticated) {
       setTimeout(() => navigate('/admin'), 0)
       return null
@@ -107,6 +174,35 @@ export default function App() {
   }
 
   if (currentPath === '/admin') {
+    if (isAuthChecking) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: 'var(--color-bg-alternate)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+          color: 'var(--color-accent)',
+          fontFamily: 'var(--font-body)',
+          fontSize: '13px',
+          letterSpacing: '0.18em',
+        }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            border: '2px solid rgba(184, 138, 50, 0.25)',
+            borderTopColor: 'var(--color-accent)',
+            borderRadius: '50%',
+            animation: 'adminSpin 0.8s linear infinite',
+          }} />
+          <span>CHECKING SESSION...</span>
+          <style>{`@keyframes adminSpin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )
+    }
+
     if (isAuthenticated) {
       setTimeout(() => navigate('/admin/dashboard'), 0)
       return null

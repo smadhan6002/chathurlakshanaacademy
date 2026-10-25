@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { signInAdmin } from '../lib/auth';
 
 export default function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
@@ -12,11 +13,11 @@ export default function AdminLogin({ onLogin }: { onLogin: () => void }) {
     setIsLoading(true);
     setError('');
 
-    // Hardcoded simple admin login
-    if (email.trim() === 'admin@admin.com' && password === 'admin123') {
+    const res = await signInAdmin(email, password);
+    if (res.success) {
       onLogin();
     } else {
-      setError('Invalid email or password.');
+      setError(res.error || 'Invalid email or password.');
       setIsLoading(false);
     }
   };
@@ -139,9 +140,14 @@ export default function AdminLogin({ onLogin }: { onLogin: () => void }) {
               style={{
                 color: '#e57373',
                 fontFamily: "var(--font-body)",
-                fontSize: '14px',
+                fontSize: '13.5px',
                 textAlign: 'center',
-                marginTop: '-8px'
+                lineHeight: 1.5,
+                padding: '10px 14px',
+                backgroundColor: 'rgba(229, 115, 115, 0.08)',
+                border: '1px solid rgba(229, 115, 115, 0.3)',
+                borderRadius: '2px',
+                marginTop: '-8px',
               }}
             >
               {error}

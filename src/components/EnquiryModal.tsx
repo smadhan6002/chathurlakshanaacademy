@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, CheckCircle, Sparkles, Send, Loader2, BookOpen, MessageSquare } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { X, CheckCircle, Sparkles, Send, Loader2, BookOpen, MessageSquare, AlertCircle } from 'lucide-react'
+import { submitEnquiry } from '../lib/mediaService'
 
 export const AVAILABLE_COURSES = [
   'Bharatanatyam',
@@ -43,6 +43,7 @@ export default function EnquiryModal({
   const [message, setMessage] = useState('')
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
+  const [submitError, setSubmitError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
 
@@ -60,6 +61,7 @@ export default function EnquiryModal({
         setCourse('Bharatanatyam')
       }
       setErrors({})
+      setSubmitError('')
       setIsSuccess(false)
     }
   }, [isOpen, initialCourse, initialType])
@@ -119,6 +121,35 @@ export default function EnquiryModal({
     return Object.keys(errs).length === 0
   }
 
+  interface SubmittedEnquiryInfo {
+    name: string
+    phone: string
+    email: string
+    course: string
+    learningMode: string
+    enquiryType: EnquiryType
+    message: string
+  }
+
+  const [submittedInfo, setSubmittedInfo] = useState<SubmittedEnquiryInfo | null>(null)
+
+  const getWhatsAppMessageUrl = (info: SubmittedEnquiryInfo) => {
+    const textLines = [
+      `*Chathur Lakshana Academy - New Online Enquiry*`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `👤 *Name:* ${info.name}`,
+      `📞 *Phone:* ${info.phone}`,
+      `✉️ *Email:* ${info.email}`,
+      `📋 *Enquiry Type:* ${info.enquiryType}`,
+      `🎭 *Course:* ${info.course}`,
+      `📍 *Learning Mode:* ${info.learningMode}`,
+      `📝 *Message / Notes:* ${info.message}`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `_Submitted via website online enquiry form_`,
+    ]
+    return `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(textLines.join('\n'))}`
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
@@ -128,63 +159,60 @@ export default function EnquiryModal({
     }
 
     setIsSubmitting(true)
+    setSubmitError('')
 
-    // Attempt optional Supabase persistence if table/credentials exist
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-      if (supabaseUrl && !supabaseUrl.includes('your-project') && supabase) {
-        await supabase.from('enquiries').insert([
-          {
-            name: name.trim(),
-            phone: phone.trim(),
-            email: email.trim(),
-            enquiry_type: enquiryType,
-            course,
-            learning_mode: learningMode,
-            message: message.trim(),
-            created_at: new Date().toISOString(),
-          },
-        ])
-      }
-    } catch {
-      // Continue to WhatsApp without blocking user enquiry
+    const currentName = name.trim()
+    const currentPhone = phone.trim()
+    const currentEmail = email.trim()
+    const currentCourse = course
+    const currentType = enquiryType
+    const currentMode = learningMode
+    const currentMessage = message.trim() || 'No additional note provided.'
+
+    // Insert enquiry directly into Supabase public.enquiries table
+    const { error } = await submitEnquiry({
+      full_name: currentName,
+      email: currentEmail,
+      phone: currentPhone,
+      course: currentCourse,
+      preferred_contact: `${currentType} (${currentMode})`,
+      message: currentMessage,
+    })
+
+    if (error) {
+      setSubmitError(error)
+      setIsSubmitting(false)
+      return
     }
 
-    // Format clean WhatsApp message for academy admin
-    const whatsappText = `Hello Chathur Lakshana Academy,
+    const info: SubmittedEnquiryInfo = {
+      name: currentName,
+      phone: currentPhone,
+      email: currentEmail,
+      course: currentCourse,
+      learningMode: currentMode,
+      enquiryType: currentType,
+      message: currentMessage,
+    }
 
-I would like to submit an enquiry:
+    // Only upon actual database success:
+    setSubmittedInfo(info)
 
-━━━━━━━━━━━━━━━━
-• Enquiry Type: ${enquiryType}
-• Full Name: ${name.trim()}
-• Phone: ${phone.trim()}
-• Email: ${email.trim()}
-• Course of Interest: ${course}
-• Preferred Mode: ${learningMode}
-
-• Message / Details:
-${message.trim() || 'No additional note'}
-━━━━━━━━━━━━━━━━
-
-Submitted via Chathur Lakshana Academy website.`
-
-    const encodedText = encodeURIComponent(whatsappText)
-    const whatsappUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodedText}`
-
-    // Open WhatsApp link in new tab
-    window.open(whatsappUrl, '_blank')
-
+    // Reset form fields
+    setName('')
+    setPhone('')
+    setEmail('')
+    setMessage('')
     setIsSubmitting(false)
     setIsSuccess(true)
 
-    // Reset fields after a delay
-    setTimeout(() => {
-      setName('')
-      setPhone('')
-      setEmail('')
-      setMessage('')
-    }, 1000)
+    // Automatically open WhatsApp with complete enquiry details
+    try {
+      const waUrl = getWhatsAppMessageUrl(info)
+      window.open(waUrl, '_blank')
+    } catch (err) {
+      console.warn('Could not auto-open WhatsApp:', err)
+    }
   }
 
   return (
@@ -284,9 +312,9 @@ Submitted via Chathur Lakshana Academy website.`
               <X size={20} />
             </button>
 
-            {isSuccess ? (
+            {isSuccess && submittedInfo ? (
               /* Success Confirmation View */
-              <div style={{ textAlign: 'center', padding: '30px 10px 10px' }}>
+              <div style={{ textAlign: 'center', padding: '24px 8px 8px' }}>
                 <div
                   style={{
                     width: '64px',
@@ -297,7 +325,7 @@ Submitted via Chathur Lakshana Academy website.`
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    margin: '0 auto 20px',
+                    margin: '0 auto 18px',
                     color: 'var(--accent-gold)',
                     boxShadow: '0 0 25px rgba(212, 175, 101, 0.3)',
                   }}
@@ -308,38 +336,117 @@ Submitted via Chathur Lakshana Academy website.`
                 <h3
                   style={{
                     fontFamily: 'var(--font-display)',
-                    fontSize: 'clamp(26px, 3.5vw, 32px)',
+                    fontSize: 'clamp(24px, 3.5vw, 30px)',
                     color: 'var(--text-primary)',
                     margin: '0 0 10px',
                     fontWeight: 400,
                   }}
                 >
-                  Enquiry Prepared
+                  Enquiry Submitted Successfully!
                 </h3>
 
                 <p
                   style={{
                     fontFamily: 'var(--font-body)',
-                    fontSize: '15px',
+                    fontSize: '14.5px',
                     color: 'var(--text-secondary)',
                     lineHeight: 1.6,
-                    maxWidth: '440px',
-                    margin: '0 auto 24px',
+                    maxWidth: '480px',
+                    margin: '0 auto 20px',
                   }}
                 >
-                  Thank you, <strong style={{ color: 'var(--accent-gold-light)' }}>{name || 'Artiste'}</strong>! Your{' '}
-                  <strong style={{ color: 'var(--accent-gold)' }}>{enquiryType}</strong> for{' '}
-                  <strong style={{ color: 'var(--accent-gold-light)' }}>{course}</strong> has been opened. Our academy will assist you promptly.
+                  Thank you, <strong style={{ color: 'var(--accent-gold-light)' }}>{submittedInfo.name}</strong>! Your{' '}
+                  <strong style={{ color: 'var(--accent-gold)' }}>{submittedInfo.enquiryType}</strong> for{' '}
+                  <strong style={{ color: 'var(--accent-gold-light)' }}>{submittedInfo.course}</strong> has been registered in our database.
                 </p>
 
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="btn-primary"
-                  style={{ padding: '12px 36px', fontSize: '13px', cursor: 'pointer' }}
+                {/* Full Details Summary Box */}
+                <div
+                  style={{
+                    backgroundColor: 'rgba(22, 8, 17, 0.75)',
+                    border: '1px solid rgba(212, 175, 101, 0.3)',
+                    borderRadius: '4px',
+                    padding: '16px 20px',
+                    textAlign: 'left',
+                    margin: '0 auto 22px',
+                    maxWidth: '480px',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '13px',
+                    lineHeight: 1.6,
+                  }}
                 >
-                  DONE
-                </button>
+                  <div
+                    style={{
+                      color: 'var(--accent-gold)',
+                      fontSize: '11px',
+                      letterSpacing: '0.18em',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      marginBottom: '10px',
+                      borderBottom: '1px solid rgba(212, 175, 101, 0.2)',
+                      paddingBottom: '6px',
+                    }}
+                  >
+                    ✦ Summary of Submitted Details
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '6px 8px' }}>
+                    <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Full Name:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{submittedInfo.name}</span>
+
+                    <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Phone:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{submittedInfo.phone}</span>
+
+                    <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Email:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{submittedInfo.email}</span>
+
+                    <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Course:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{submittedInfo.course}</span>
+
+                    <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Learning Mode:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{submittedInfo.learningMode}</span>
+
+                    {submittedInfo.message && submittedInfo.message !== 'No additional note provided.' && (
+                      <>
+                        <span style={{ color: 'var(--accent-gold-light)', fontWeight: 500 }}>Notes / Query:</span>
+                        <span style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}>{submittedInfo.message}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <a
+                    href={getWhatsAppMessageUrl(submittedInfo)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary"
+                    style={{
+                      padding: '13px 26px',
+                      fontSize: '12.5px',
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      backgroundColor: '#25D366',
+                      borderColor: '#25D366',
+                      color: '#FFFFFF',
+                      fontWeight: 600,
+                      letterSpacing: '0.08em',
+                    }}
+                  >
+                    <span>💬 SEND FULL DETAILS VIA WHATSAPP</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="btn-secondary"
+                    style={{ padding: '13px 28px', fontSize: '12.5px', cursor: 'pointer' }}
+                  >
+                    CLOSE
+                  </button>
+                </div>
               </div>
             ) : (
               /* Form View */
@@ -756,6 +863,27 @@ Submitted via Chathur Lakshana Academy website.`
                       }}
                     />
                   </div>
+
+                  {/* Submission Error Banner */}
+                  {submitError && (
+                    <div style={{
+                      padding: '12px 14px',
+                      backgroundColor: 'rgba(255, 107, 107, 0.12)',
+                      border: '1px solid rgba(255, 107, 107, 0.4)',
+                      borderRadius: '2px',
+                      color: '#FF8585',
+                      fontSize: '13px',
+                      fontFamily: 'var(--font-body)',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      lineHeight: 1.5,
+                    }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span>{submitError}</span>
+                    </div>
+                  )}
 
                   {/* Submit Button */}
                   <button
